@@ -1,0 +1,19 @@
+# The packages 'qgis', 'gdal', 'rasterio', 'shapely', 'fiona', and 'geoalchemy2'
+# cannot be installed via pip without system-level geospatial libraries
+# (QGIS, GDAL/OGR). These must be installed in the environment separately,
+# for example, using a Conda environment or the OSGeo4W installer.
+
+PyQt6
+PyQt6-WebEngine
+# qgis
+# gdal
+# rasterio
+# shapely
+# fiona
+psycopg2-binary
+# geoalchemy2
+numpy
+scipy
+pyqtgraph
+pyvista
+matplotlib
