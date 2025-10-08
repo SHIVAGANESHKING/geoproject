@@ -1,8 +1,8 @@
-from PyQt6.QtWidgets import (
+from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QLineEdit,
     QSpinBox, QPushButton, QColorDialog, QDialogButtonBox, QMessageBox
 )
-from PyQt6.QtGui import QColor, QPalette
+from PyQt5.QtGui import QColor, QPalette
 from models.terrain_class import TerrainClass
 from utils.validators import is_valid_class_name
 
