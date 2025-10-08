@@ -1,5 +1,5 @@
 import sys
-from PyQt6.QtWidgets import QApplication
+from PyQt5.QtWidgets import QApplication
 from ui.main_window import MainWindow
 from ui.map_canvas import qgis_app # Import the QGIS app instance
 from core.statistics import initialize_processing
