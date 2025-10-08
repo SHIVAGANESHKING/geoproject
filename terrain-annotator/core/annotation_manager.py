@@ -1,6 +1,7 @@
 from .database_manager import DatabaseManager
 from models.annotation import Annotation
 from qgis.core import QgsGeometry
+from PyQt6.QtWidgets import QMessageBox
 
 class AnnotationManager:
     """Handles CRUD operations for annotations in the database."""
@@ -56,7 +57,7 @@ class AnnotationManager:
             return True
         except Exception as e:
             self.db.conn.rollback()
-            print(f"Error saving annotation: {e}")
+            QMessageBox.critical(None, "Database Error", f"Could not save annotation to the database.\n\nDetails: {e}")
             return False
 
     def update_annotation(self, annotation: Annotation) -> bool:

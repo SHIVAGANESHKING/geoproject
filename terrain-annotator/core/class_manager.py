@@ -1,5 +1,6 @@
 from .database_manager import DatabaseManager
 from models.terrain_class import TerrainClass
+from PyQt6.QtWidgets import QMessageBox
 
 class ClassManager:
     """Handles CRUD operations for terrain classes in the database."""
@@ -29,7 +30,7 @@ class ClassManager:
                     color=row[3], description=row[4]
                 ))
         except Exception as e:
-            print(f"Error loading terrain classes: {e}")
+            QMessageBox.critical(None, "Database Error", f"Could not load terrain classes.\n\nDetails: {e}")
         return classes
 
     def add_class(self, name: str, class_id: int, color: str) -> bool:
@@ -42,7 +43,7 @@ class ClassManager:
             return True
         except Exception as e:
             self.db.conn.rollback()
-            print(f"Error adding class: {e}")
+            QMessageBox.critical(None, "Database Error", f"Could not add the new class.\n\nDetails: {e}")
             return False
 
     def update_class(self, terrain_class: TerrainClass) -> bool:
@@ -62,7 +63,7 @@ class ClassManager:
             return True
         except Exception as e:
             self.db.conn.rollback()
-            print(f"Error updating class: {e}")
+            QMessageBox.critical(None, "Database Error", f"Could not update the class.\n\nDetails: {e}")
             return False
 
     def delete_class(self, class_id: int) -> bool:
@@ -75,5 +76,5 @@ class ClassManager:
             return True
         except Exception as e:
             self.db.conn.rollback()
-            print(f"Error deleting class: {e}")
+            QMessageBox.critical(None, "Database Error", f"Could not delete the class.\n\nDetails: {e}")
             return False

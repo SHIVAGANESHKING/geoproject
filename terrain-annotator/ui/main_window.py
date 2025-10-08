@@ -1,7 +1,7 @@
 from qgis.core import QgsVectorLayer, QgsFeature, QgsProject, QgsGeometry
 from PyQt6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QFileDialog, QDialog, QDockWidget
-from PyQt6.QtGui import QAction
-from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QAction, QKeySequence
+from PyQt6.QtCore import Qt, QThreadPool
 from .map_canvas import MapCanvas
 from .sidebar_widget import SidebarWidget
 from .dialogs.settings_dialog import SettingsDialog
@@ -15,6 +15,7 @@ from core.class_manager import ClassManager
 from core.statistics import StatisticsCalculator
 from models.annotation import Annotation
 from utils.exporters import GeoJsonExporter
+from utils.threads import Worker
 from tools.polygon_tool import PolygonTool
 from tools.select_tool import SelectTool
 from tools.edit_tool import EditTool
@@ -53,6 +54,8 @@ class MainWindow(QMainWindow):
         self.last_calculated_stats = {}
         self.selected_feature_id = None
         self.loaded_annotations_layer = None
+        self.threadpool = QThreadPool()
+        print(f"Multithreading with maximum {self.threadpool.maxThreadCount()} threads")
 
         # Setup menu bar
         self._create_menu_bar()
@@ -126,28 +129,43 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Polygon created. Statistics updated.", 5000)
 
     def update_statistics(self, geometry):
-        """Calculates statistics for a geometry and updates the sidebar."""
-        # Geometry stats
+        """
+        Calculates statistics for a geometry.
+        Geometry stats are done in the main thread; raster stats are offloaded.
+        """
+        # Geometry stats are fast, can be done in the main thread
         geom_stats = self.stats_calculator.calculate_geometry_stats(geometry)
-        self.sidebar.area_label.setText(f"{geom_stats['area'] / 1e6:.4f} km²") # Assuming CRS is in meters
+        self.sidebar.area_label.setText(f"{geom_stats['area'] / 1e6:.4f} km²")
         self.sidebar.perimeter_label.setText(f"{geom_stats['perimeter'] / 1e3:.2f} km")
+        self.last_calculated_stats = geom_stats  # Store partial stats immediately
 
-        # Raster stats
+        # Raster stats are slow, run them in a background thread
         dsm_layer = self.dsm_processor.current_dsm_layer
         if dsm_layer:
-            raster_stats = self.stats_calculator.calculate_raster_stats(geometry, dsm_layer)
-            if raster_stats:
-                self.sidebar.mean_elevation_label.setText(f"{raster_stats['elevation_mean']:.2f} m")
-                self.sidebar.mean_slope_label.setText(f"{raster_stats['slope_mean']:.2f}°")
-                self.last_calculated_stats = {**geom_stats, **raster_stats}
-            else:
-                self.sidebar.mean_elevation_label.setText("N/A")
-                self.sidebar.mean_slope_label.setText("N/A")
-                self.last_calculated_stats = geom_stats
+            self.statusBar().showMessage("Calculating raster statistics...", 0)  # Persistent message
+            worker = Worker(self.stats_calculator.calculate_raster_stats, geometry, dsm_layer)
+            worker.signals.result.connect(self.handle_raster_stats_result)
+            worker.signals.finished.connect(lambda: self.statusBar().showMessage("Statistics updated.", 5000))
+            worker.signals.error.connect(lambda err: self.statusBar().showMessage(f"Error calculating stats: {err}", 5000))
+            self.threadpool.start(worker)
         else:
             self.sidebar.mean_elevation_label.setText("No DSM loaded")
             self.sidebar.mean_slope_label.setText("N/A")
-            self.last_calculated_stats = geom_stats
+
+    def handle_raster_stats_result(self, raster_stats):
+        """
+        Handles the result from the background statistics calculation.
+        This method is executed in the main thread.
+        """
+        if raster_stats:
+            self.sidebar.mean_elevation_label.setText(f"{raster_stats['elevation_mean']:.2f} m")
+            slope = raster_stats.get('slope_mean')
+            self.sidebar.mean_slope_label.setText(f"{slope:.2f}°" if slope is not None else "N/A")
+            # Merge raster stats with existing geometry stats
+            self.last_calculated_stats.update(raster_stats)
+        else:
+            self.sidebar.mean_elevation_label.setText("N/A")
+            self.sidebar.mean_slope_label.setText("N/A")
 
     def save_annotation(self):
         """Saves the last drawn polygon to the database."""
@@ -186,29 +204,35 @@ class MainWindow(QMainWindow):
     def _create_menu_bar(self):
         """Creates the main menu bar."""
         menu_bar = self.menuBar()
-        file_menu = menu_bar.addMenu("&File")
 
+        # File Menu
+        file_menu = menu_bar.addMenu("&File")
         load_dsm_action = QAction("Load DSM...", self)
         load_dsm_action.triggered.connect(self.load_dsm)
         file_menu.addAction(load_dsm_action)
-
         load_ann_action = QAction("Load Annotations from DB", self)
         load_ann_action.triggered.connect(self.load_annotations)
         file_menu.addAction(load_ann_action)
-
         file_menu.addSeparator()
-
         manage_classes_action = QAction("Manage Classes...", self)
         manage_classes_action.triggered.connect(self.open_class_manager)
         file_menu.addAction(manage_classes_action)
-
         settings_action = QAction("Settings...", self)
         settings_action.triggered.connect(self.open_settings_dialog)
         file_menu.addAction(settings_action)
-
         exit_action = QAction("Exit", self)
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
+
+        # Edit Menu
+        edit_menu = menu_bar.addMenu("&Edit")
+        undo_stack = QgsProject.instance().undoStack()
+        undo_action = undo_stack.createUndoAction(self, "&Undo")
+        undo_action.setShortcut(QKeySequence.StandardKey.Undo)
+        redo_action = undo_stack.createRedoAction(self, "&Redo")
+        redo_action.setShortcut(QKeySequence.StandardKey.Redo)
+        edit_menu.addAction(undo_action)
+        edit_menu.addAction(redo_action)
 
     def open_settings_dialog(self):
         """Opens the application settings dialog."""
@@ -313,13 +337,19 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("No feature selected to delete.", 5000)
             return
 
+        # Use the undo stack to make the deletion undoable
+        undo_stack = QgsProject.instance().undoStack()
+        undo_stack.beginCommand(f"Delete feature {self.selected_feature_id}")
+
         if self.annotation_manager.delete_annotation(self.selected_feature_id):
             self.loaded_annotations_layer.dataProvider().deleteFeatures([self.selected_feature_id])
             self.map_canvas.refresh()
             self.statusBar().showMessage(f"Feature {self.selected_feature_id} deleted.", 5000)
             self.selected_feature_id = None
+            undo_stack.endCommand()
         else:
             self.statusBar().showMessage("Failed to delete annotation from database.", 5000)
+            undo_stack.undo() # Rollback the command
 
     def export_annotations(self):
         """Exports all annotations to a GeoJSON file."""

@@ -3,6 +3,8 @@ from PyQt6.QtWidgets import (
     QPushButton, QDialogButtonBox, QMessageBox, QListWidgetItem
 )
 from core.class_manager import ClassManager
+from .add_edit_class_dialog import AddEditClassDialog
+from models.terrain_class import TerrainClass
 
 class ClassManagerDialog(QDialog):
     """Dialog for managing terrain classes."""
@@ -30,8 +32,8 @@ class ClassManagerDialog(QDialog):
         layout.addLayout(button_layout)
 
         # Connect signals
-        # self.add_button.clicked.connect(self.add_class)
-        # self.edit_button.clicked.connect(self.edit_class)
+        self.add_button.clicked.connect(self.add_class)
+        self.edit_button.clicked.connect(self.edit_class)
         self.delete_button.clicked.connect(self.delete_class)
 
         # Dialog buttons
@@ -45,9 +47,41 @@ class ClassManagerDialog(QDialog):
         classes = self.class_manager.get_all_classes()
         for terrain_class in classes:
             item = QListWidgetItem(f"ID: {terrain_class.class_id} - {terrain_class.class_name}")
-            # Store the actual object in the item's data
             item.setData(1, terrain_class)
             self.list_widget.addItem(item)
+
+    def add_class(self):
+        """Opens a dialog to add a new class."""
+        dialog = AddEditClassDialog(parent=self)
+        if dialog.exec():
+            data = dialog.get_class_data()
+            if self.class_manager.add_class(data['name'], data['class_id'], data['color']):
+                self.refresh_class_list()
+            else:
+                QMessageBox.critical(self, "Error", "Failed to add the new class.")
+
+    def edit_class(self):
+        """Opens a dialog to edit the selected class."""
+        selected_item = self.list_widget.currentItem()
+        if not selected_item:
+            QMessageBox.warning(self, "No Selection", "Please select a class to edit.")
+            return
+
+        terrain_class = selected_item.data(1)
+        dialog = AddEditClassDialog(terrain_class, self)
+        if dialog.exec():
+            data = dialog.get_class_data()
+            updated_class = TerrainClass(
+                id=terrain_class.id,
+                class_name=data['name'],
+                class_id=data['class_id'],
+                color=data['color'],
+                description=data['description']
+            )
+            if self.class_manager.update_class(updated_class):
+                self.refresh_class_list()
+            else:
+                QMessageBox.critical(self, "Error", "Failed to update the class.")
 
     def delete_class(self):
         """Deletes the selected class."""
@@ -69,6 +103,3 @@ class ClassManagerDialog(QDialog):
                 QMessageBox.information(self, "Success", "Class deleted successfully.")
             else:
                 QMessageBox.critical(self, "Error", "Failed to delete the class from the database.")
-
-    # TODO: Implement add_class and edit_class methods, which will likely
-    # require another small dialog for input.
