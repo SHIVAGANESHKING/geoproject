@@ -1,9 +1,12 @@
+
+
+
 import os
 import sys
 from qgis.core import QgsApplication, QgsProject, QgsRasterLayer, QgsCoordinateReferenceSystem
 from qgis.gui import QgsMapCanvas
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QColor
 
 def initialize_qgis():
     """
@@ -21,6 +24,7 @@ def initialize_qgis():
         if sys.platform == 'darwin':  # macOS
             paths.append('/Applications/QGIS.app/Contents/MacOS')
         elif sys.platform == 'win32':  # Windows
+            paths.append('C:\\Program Files\\QGIS 3.40.11\\apps\\qgis-ltr')
             paths.append('C:\\Program Files\\QGIS 3.28\\apps\\qgis-ltr')
             paths.append('C:\\OSGeo4W\\apps\\qgis-ltr')
         elif sys.platform == 'linux': # Linux
@@ -28,7 +32,7 @@ def initialize_qgis():
             paths.append('/usr/local')
 
         for path in paths:
-            if os.path.exists(os.path.join(path, 'bin', 'qgis_core.dll' if sys.platform == 'win32' else 'lib/libqgis_core.so.3.28.11')): # A more specific check might be needed
+            if os.path.exists(path):
                 QgsApplication.setPrefixPath(path, True)
                 print(f"Found and set QGIS prefix path: {path}")
                 break
@@ -41,6 +45,17 @@ def initialize_qgis():
         qgis_app = QgsApplication([], True)
         qgis_app.initQgis()
         print("QGIS Initialized Successfully.")
+        
+        # Add processing plugin path to make processing module available
+        try:
+            plugin_paths = QgsApplication.pluginPath()
+            processing_path = os.path.join(plugin_paths, 'processing')
+            if os.path.exists(processing_path) and processing_path not in sys.path:
+                sys.path.insert(0, processing_path)
+                print(f"Added processing plugin path: {processing_path}")
+        except Exception as e:
+            print(f"Note: Could not add processing path: {e}")
+        
         return qgis_app
     except Exception as e:
         print(f"Fatal Error: Could not initialize QGIS. Please check your installation and QGIS_PREFIX_PATH. Error: {e}")
