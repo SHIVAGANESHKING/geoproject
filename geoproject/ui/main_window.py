@@ -1,7 +1,37 @@
+
+import os, sys
+# Adjust version/path as per your QGIS installation
+QGIS_PREFIX_PATH = r"C:\Program Files\QGIS 3.40.11\apps\qgis-ltr"
+QGIS_PYTHON_PATH = r"C:\Program Files\QGIS 3.40.11\apps\qgis-ltr\python"
+
+# Add QGIS Python and Qt libraries to sys.path
+sys.path.append(QGIS_PYTHON_PATH)
+sys.path.append(os.path.join(QGIS_PREFIX_PATH, 'plugins'))
+
+# If QGIS uses custom Qt (optional)
+os.environ['QT_PLUGIN_PATH'] = os.path.join(QGIS_PREFIX_PATH, 'qtplugins')
+# Path to your QGIS installation (update if different)
+QGIS_ROOT = r"C:\Program Files\QGIS 3.40.11"
+QGIS_PREFIX_PATH = os.path.join(QGIS_ROOT, "apps", "qgis-ltr")
+QGIS_BIN_PATH = os.path.join(QGIS_PREFIX_PATH, "bin")
+QGIS_PYTHON_PATH = os.path.join(QGIS_PREFIX_PATH, "python")
+QGIS_PLUGIN_PATH = os.path.join(QGIS_PREFIX_PATH, "plugins")
+QGIS_QT_PLUGIN_PATH = os.path.join(QGIS_PREFIX_PATH, "qtplugins")
+
+# ✅ Add QGIS to PATH and Python paths
+os.environ['PATH'] = f"{QGIS_BIN_PATH};{os.environ.get('PATH', '')}"
+sys.path.append(QGIS_PYTHON_PATH)
+sys.path.append(QGIS_PLUGIN_PATH)
+os.environ['QT_PLUGIN_PATH'] = QGIS_QT_PLUGIN_PATH
+
 from qgis.core import QgsVectorLayer, QgsFeature, QgsProject, QgsGeometry
-from PyQt6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QFileDialog, QDialog, QDockWidget
-from PyQt6.QtGui import QAction, QKeySequence
-from PyQt6.QtCore import Qt, QThreadPool
+from PyQt5.QtWidgets import (
+    QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QMessageBox,
+    QFileDialog, QDialog, QDockWidget, QAction  # ✅ FIXED: QAction moved here
+)
+from PyQt5.QtGui import QKeySequence  # ✅ FIXED: Only QKeySequence from QtGui
+from PyQt5.QtCore import Qt, QThreadPool
+
 from .map_canvas import MapCanvas
 from .sidebar_widget import SidebarWidget
 from .dialogs.settings_dialog import SettingsDialog
@@ -19,6 +49,12 @@ from utils.threads import Worker
 from tools.polygon_tool import PolygonTool
 from tools.select_tool import SelectTool
 from tools.edit_tool import EditTool
+# Import new tools
+from tools.enhanced_tools import (
+    PanTool, ZoomInTool, ZoomOutTool, 
+    IdentifyTool, MeasureTool, ZoomToExtentTool
+)
+from tools.map_toolbar import MapToolbar
 
 class MainWindow(QMainWindow):
     """Main application window."""
@@ -59,7 +95,7 @@ class MainWindow(QMainWindow):
 
         # Setup menu bar
         self._create_menu_bar()
-
+        self._initialize_tools()
         # Setup tools
         self.polygon_tool = PolygonTool(self.map_canvas)
         self.polygon_tool.polygonCreated.connect(self.handle_polygon_created)
@@ -84,7 +120,31 @@ class MainWindow(QMainWindow):
 
         # Connect the 3D viewer button
         self.sidebar.view_3d_button.clicked.connect(self.show_3d_viewer)
-
+        
+    def display_feature_info(self, info):
+        """Display identified feature information in the dock."""
+        html = f"<h3>Layer: {info['layer_name']}</h3>"
+        html += f"<p><b>Feature ID:</b> {info['feature_id']}</p>"
+        html += "<h4>Attributes:</h4><ul>"
+        
+        for key, value in info['attributes'].items():
+            html += f"<li><b>{key}:</b> {value}</li>"
+        
+        html += "</ul>"
+        
+        self.identify_text.setHtml(html)
+        self.identify_dock.setVisible(True)
+        self.statusBar().showMessage("Feature identified", 3000)
+        
+    def display_measurement(self, value, unit):
+        """Display measurement result."""
+        QMessageBox.information(
+            self,
+            "Measurement Result",
+            f"Measured {unit.split('²')[0] if '²' in unit else 'distance'}: {value:.4f} {unit}"
+        )
+        self.statusBar().showMessage(f"Measurement: {value:.4f} {unit}", 5000)
+        
     def _create_3d_viewer_dock(self):
         """Creates the dock widget for the 3D viewer."""
         self.viewer_3d_dock = QDockWidget("3D Terrain Viewer", self)
@@ -92,11 +152,10 @@ class MainWindow(QMainWindow):
         self.viewer_3d_dock.setWidget(self.viewer_3d)
         self.viewer_3d_dock.setAllowedAreas(Qt.DockWidgetArea.BottomDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.viewer_3d_dock)
-        self.viewer_3d_dock.setVisible(False)  # Start hidden
+        self.viewer_3d_dock.setVisible(False)
 
     def show_3d_viewer(self):
         """Shows the 3D viewer dock."""
-        # TODO: This would eventually pass the selected geometry to the viewer
         self.viewer_3d_dock.setVisible(True)
         self.statusBar().showMessage("3D viewer opened (placeholder).", 3000)
 
@@ -137,12 +196,12 @@ class MainWindow(QMainWindow):
         geom_stats = self.stats_calculator.calculate_geometry_stats(geometry)
         self.sidebar.area_label.setText(f"{geom_stats['area'] / 1e6:.4f} km²")
         self.sidebar.perimeter_label.setText(f"{geom_stats['perimeter'] / 1e3:.2f} km")
-        self.last_calculated_stats = geom_stats  # Store partial stats immediately
+        self.last_calculated_stats = geom_stats
 
         # Raster stats are slow, run them in a background thread
         dsm_layer = self.dsm_processor.current_dsm_layer
         if dsm_layer:
-            self.statusBar().showMessage("Calculating raster statistics...", 0)  # Persistent message
+            self.statusBar().showMessage("Calculating raster statistics...", 0)
             worker = Worker(self.stats_calculator.calculate_raster_stats, geometry, dsm_layer)
             worker.signals.result.connect(self.handle_raster_stats_result)
             worker.signals.finished.connect(lambda: self.statusBar().showMessage("Statistics updated.", 5000))
@@ -161,7 +220,6 @@ class MainWindow(QMainWindow):
             self.sidebar.mean_elevation_label.setText(f"{raster_stats['elevation_mean']:.2f} m")
             slope = raster_stats.get('slope_mean')
             self.sidebar.mean_slope_label.setText(f"{slope:.2f}°" if slope is not None else "N/A")
-            # Merge raster stats with existing geometry stats
             self.last_calculated_stats.update(raster_stats)
         else:
             self.sidebar.mean_elevation_label.setText("N/A")
@@ -224,15 +282,23 @@ class MainWindow(QMainWindow):
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
 
-        # Edit Menu
+        # Edit Menu (simplified - undo/redo will be layer-specific)
         edit_menu = menu_bar.addMenu("&Edit")
-        undo_stack = QgsProject.instance().undoStack()
-        undo_action = undo_stack.createUndoAction(self, "&Undo")
-        undo_action.setShortcut(QKeySequence.StandardKey.Undo)
-        redo_action = undo_stack.createRedoAction(self, "&Redo")
-        redo_action.setShortcut(QKeySequence.StandardKey.Redo)
-        edit_menu.addAction(undo_action)
-        edit_menu.addAction(redo_action)
+        
+        # Create basic undo/redo actions
+        # Note: In QGIS 3.x, undo/redo is layer-specific, not project-wide
+        self.undo_action = QAction("&Undo", self)
+        self.undo_action.setShortcut(QKeySequence.StandardKey.Undo)
+        self.undo_action.triggered.connect(self.undo_last_edit)
+        self.undo_action.setEnabled(False)  # Disabled until a layer is being edited
+        
+        self.redo_action = QAction("&Redo", self)
+        self.redo_action.setShortcut(QKeySequence.StandardKey.Redo)
+        self.redo_action.triggered.connect(self.redo_last_edit)
+        self.redo_action.setEnabled(False)  # Disabled until a layer is being edited
+        
+        edit_menu.addAction(self.undo_action)
+        edit_menu.addAction(self.redo_action)
 
     def open_settings_dialog(self):
         """Opens the application settings dialog."""
@@ -242,13 +308,12 @@ class MainWindow(QMainWindow):
     def open_class_manager(self):
         """Opens the dialog to manage terrain classes."""
         if not self.db_manager.is_connected():
-            self.db_manager.connect() # Attempt to connect
+            self.db_manager.connect()
             if not self.db_manager.is_connected():
-                return # Error message is shown by the manager
+                return
 
         dialog = ClassManagerDialog(self.class_manager, self)
         dialog.exec()
-        # After closing the dialog, refresh the classes in the sidebar
         self.sidebar.populate_classes(self.class_manager.get_all_classes())
 
     def load_annotations(self):
@@ -273,7 +338,6 @@ class MainWindow(QMainWindow):
         provider.addFeatures(features)
         QgsProject.instance().addMapLayer(self.loaded_annotations_layer)
 
-        # Setup tools for the new layer
         self.select_tool = SelectTool(self.map_canvas, self.loaded_annotations_layer)
         self.select_tool.featureSelected.connect(self.handle_feature_selected)
         self.edit_tool = EditTool(self.map_canvas, self.loaded_annotations_layer)
@@ -288,17 +352,43 @@ class MainWindow(QMainWindow):
             return
 
         if self.edit_tool.is_active():
-            # Stop editing
             self.update_edited_features()
             self.edit_tool.deactivate()
             self.sidebar.edit_button.setText("Edit Annotation")
             self.statusBar().showMessage("Editing stopped.", 3000)
         else:
-            # Start editing
             self.edit_tool.activate()
             self.sidebar.edit_button.setText("Stop Editing")
             self.statusBar().showMessage("Editing mode activated. Select a vertex to move it.", 5000)
-
+            
+            
+    def _initialize_tools(self):
+        """Initialize all map tools."""
+        # Navigation tools
+        self.pan_tool = PanTool(self.map_canvas)
+        self.zoom_in_tool = ZoomInTool(self.map_canvas)
+        self.zoom_out_tool = ZoomOutTool(self.map_canvas)
+        self.zoom_extent_tool = ZoomToExtentTool(self.map_canvas)
+        
+        # Annotation tools
+        self.polygon_tool = PolygonTool(self.map_canvas)
+        self.polygon_tool.polygonCreated.connect(self.handle_polygon_created)
+        self.select_tool = None
+        self.edit_tool = None
+        
+        # Information tools
+        self.identify_tool = IdentifyTool(self.map_canvas)
+        self.identify_tool.featureIdentified.connect(self.display_feature_info)
+        
+        # Measurement tools
+        self.measure_distance_tool = MeasureTool(self.map_canvas, 'distance')
+        self.measure_distance_tool.measurementComplete.connect(self.display_measurement)
+        
+        self.measure_area_tool = MeasureTool(self.map_canvas, 'area')
+        self.measure_area_tool.measurementComplete.connect(self.display_measurement)
+        
+        # Current active tool
+        self.current_tool = None
     def update_edited_features(self):
         """Finds modified features, recalculates stats, and saves them to the DB."""
         if not self.loaded_annotations_layer or not self.loaded_annotations_layer.isEditable():
@@ -309,14 +399,12 @@ class MainWindow(QMainWindow):
             return
 
         for feature_id, feature in modified_features.changedGeometries().items():
-            # Recalculate stats
             self.update_statistics(feature.geometry())
 
-            # Create annotation object and save
             updated_annotation = Annotation(
                 id=feature_id,
                 geom=feature.geometry().asWkt(),
-                class_name=feature['class_name'], # Get class name from feature attribute
+                class_name=feature['class_name'],
                 area_sqm=self.last_calculated_stats.get('area', 0.0),
                 perimeter_m=self.last_calculated_stats.get('perimeter', 0.0),
                 elevation_min=self.last_calculated_stats.get('elevation_min'),
@@ -331,25 +419,44 @@ class MainWindow(QMainWindow):
         self.selected_feature_id = feature_id
         self.statusBar().showMessage(f"Feature {feature_id} selected.", 3000)
 
+    def undo_last_edit(self):
+        """Undo the last edit on the active layer."""
+        if self.loaded_annotations_layer and self.loaded_annotations_layer.isEditable():
+            self.loaded_annotations_layer.undoStack().undo()
+            self.map_canvas.refresh()
+            self.statusBar().showMessage("Undo completed.", 3000)
+        else:
+            self.statusBar().showMessage("No editable layer active.", 3000)
+
+    def redo_last_edit(self):
+        """Redo the last undone edit on the active layer."""
+        if self.loaded_annotations_layer and self.loaded_annotations_layer.isEditable():
+            self.loaded_annotations_layer.undoStack().redo()
+            self.map_canvas.refresh()
+            self.statusBar().showMessage("Redo completed.", 3000)
+        else:
+            self.statusBar().showMessage("No editable layer active.", 3000)
+
     def delete_selected_annotation(self):
         """Deletes the currently selected annotation."""
         if self.selected_feature_id is None:
             self.statusBar().showMessage("No feature selected to delete.", 5000)
             return
 
-        # Use the undo stack to make the deletion undoable
-        undo_stack = QgsProject.instance().undoStack()
-        undo_stack.beginCommand(f"Delete feature {self.selected_feature_id}")
-
+        # Delete from database first
         if self.annotation_manager.delete_annotation(self.selected_feature_id):
-            self.loaded_annotations_layer.dataProvider().deleteFeatures([self.selected_feature_id])
+            # If layer is in edit mode, delete through the layer
+            if self.loaded_annotations_layer and self.loaded_annotations_layer.isEditable():
+                self.loaded_annotations_layer.deleteFeature(self.selected_feature_id)
+            else:
+                # Otherwise, delete directly from data provider
+                self.loaded_annotations_layer.dataProvider().deleteFeatures([self.selected_feature_id])
+            
             self.map_canvas.refresh()
             self.statusBar().showMessage(f"Feature {self.selected_feature_id} deleted.", 5000)
             self.selected_feature_id = None
-            undo_stack.endCommand()
         else:
             self.statusBar().showMessage("Failed to delete annotation from database.", 5000)
-            undo_stack.undo() # Rollback the command
 
     def export_annotations(self):
         """Exports all annotations to a GeoJSON file."""
