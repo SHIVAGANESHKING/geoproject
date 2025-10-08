@@ -1,6 +1,6 @@
 from qgis.core import QgsVectorLayer
 from qgis.gui import QgsMapToolIdentifyFeature
-from PyQt6.QtCore import pyqtSignal
+from PyQt5.QtCore import pyqtSignal
 
 class SelectTool(QgsMapToolIdentifyFeature):
     """A map tool to select a single feature from a layer."""
