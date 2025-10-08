@@ -2,6 +2,8 @@ from qgis.core import QgsWkbTypes, QgsPointXY, QgsPolygon, QgsFeature, QgsGeomet
 from qgis.gui import QgsMapToolEmitPoint, QgsRubberBand
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import QMessageBox
+from core.geometry_tools import is_polygon_simple
 
 class PolygonTool(QgsMapToolEmitPoint):
     """A map tool for drawing a polygon by clicking points."""
@@ -57,11 +59,20 @@ class PolygonTool(QgsMapToolEmitPoint):
         self.rubber_band.show()
 
     def finalize_polygon(self):
-        """Finalizes the polygon and emits the `polygonCreated` signal."""
+        """Finalizes the polygon, validates it, and emits the `polygonCreated` signal."""
         if len(self.points) > 2:
             polygon = QgsPolygon()
             polygon.setExteriorRing([QgsPointXY(p) for p in self.points])
             geometry = QgsGeometry(polygon)
+
+            # Validate that the polygon is simple
+            if not is_polygon_simple(geometry):
+                QMessageBox.warning(
+                    None, "Invalid Geometry", "The drawn polygon cannot intersect itself."
+                )
+                self.reset()
+                return
+
             self.polygonCreated.emit(geometry)
         self.reset()
 

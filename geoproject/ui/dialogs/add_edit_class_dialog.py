@@ -1,9 +1,10 @@
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QLineEdit,
-    QSpinBox, QPushButton, QColorDialog, QDialogButtonBox
+    QSpinBox, QPushButton, QColorDialog, QDialogButtonBox, QMessageBox
 )
 from PyQt6.QtGui import QColor, QPalette
 from models.terrain_class import TerrainClass
+from utils.validators import is_valid_class_name
 
 class AddEditClassDialog(QDialog):
     """A dialog for adding or editing a terrain class."""
@@ -48,9 +49,19 @@ class AddEditClassDialog(QDialog):
         dialog_buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        dialog_buttons.accepted.connect(self.accept)
+        dialog_buttons.accepted.connect(self.validate_and_accept)
         dialog_buttons.rejected.connect(self.reject)
         layout.addWidget(dialog_buttons)
+
+    def validate_and_accept(self):
+        """Validates the input before accepting the dialog."""
+        class_name = self.name_edit.text()
+        if not is_valid_class_name(class_name):
+            QMessageBox.warning(self, "Invalid Input", "Class name cannot be empty.")
+            return
+
+        # If validation passes, accept the dialog
+        self.accept()
 
     def choose_color(self):
         """Opens a color picker dialog."""
