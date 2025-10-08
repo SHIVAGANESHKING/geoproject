@@ -11,6 +11,7 @@ class DSMProcessor:
         """
         self.canvas = canvas
         self.project = QgsProject.instance()
+        self.current_dsm_layer = None
 
     def load_dsm_layer(self, file_path: str) -> QgsRasterLayer | None:
         """
@@ -26,8 +27,9 @@ class DSMProcessor:
             print(f"Error: Failed to load DSM layer from {file_path}")
             return None
 
-        # Add the layer to the project
+        # Add the layer to the project and store it
         self.project.addMapLayer(raster_layer)
+        self.current_dsm_layer = raster_layer
 
         # Optionally, set the canvas extent to the new layer
         self.canvas.setExtent(raster_layer.extent())

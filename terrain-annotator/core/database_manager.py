@@ -1,5 +1,6 @@
 import psycopg2
 from config.database import DB_SETTINGS
+from PyQt6.QtWidgets import QMessageBox
 
 class DatabaseManager:
     """Manages the connection to the PostGIS database."""
@@ -19,7 +20,11 @@ class DatabaseManager:
             print("Database connection established successfully.")
             return True
         except psycopg2.OperationalError as e:
-            print(f"Error: Could not connect to the database. {e}")
+            error_title = "Database Connection Error"
+            error_text = f"Could not connect to the database.\n\n" \
+                         f"Please check your settings and ensure the database is running.\n\n" \
+                         f"Details: {e}"
+            QMessageBox.critical(None, error_title, error_text)
             self.conn = None
             self.cursor = None
             return False
