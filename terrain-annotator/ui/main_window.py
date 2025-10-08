@@ -1,13 +1,17 @@
 from qgis.core import QgsVectorLayer, QgsFeature, QgsProject, QgsGeometry
-from PyQt6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QFileDialog, QDialog
+from PyQt6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QFileDialog, QDialog, QDockWidget
 from PyQt6.QtGui import QAction
+from PyQt6.QtCore import Qt
 from .map_canvas import MapCanvas
 from .sidebar_widget import SidebarWidget
 from .dialogs.settings_dialog import SettingsDialog
 from .dialogs.export_dialog import ExportDialog
+from .dialogs.class_manager_dialog import ClassManagerDialog
+from .terrain_viewer_3d import TerrainViewer3D
 from core.dsm_processor import DSMProcessor
 from core.database_manager import DatabaseManager
 from core.annotation_manager import AnnotationManager
+from core.class_manager import ClassManager
 from core.statistics import StatisticsCalculator
 from models.annotation import Annotation
 from utils.exporters import GeoJsonExporter
@@ -42,6 +46,7 @@ class MainWindow(QMainWindow):
         # Initialize core components
         self.db_manager = DatabaseManager()
         self.annotation_manager = AnnotationManager(self.db_manager)
+        self.class_manager = ClassManager(self.db_manager)
         self.dsm_processor = DSMProcessor(self.map_canvas)
         self.stats_calculator = StatisticsCalculator()
         self.last_drawn_geometry = None
@@ -67,6 +72,30 @@ class MainWindow(QMainWindow):
 
         # Setup temporary layer for annotations
         self._setup_annotation_layer()
+
+        # Initial population of sidebar classes
+        self.sidebar.populate_classes(self.class_manager.get_all_classes())
+
+        # Setup the 3D viewer dock
+        self._create_3d_viewer_dock()
+
+        # Connect the 3D viewer button
+        self.sidebar.view_3d_button.clicked.connect(self.show_3d_viewer)
+
+    def _create_3d_viewer_dock(self):
+        """Creates the dock widget for the 3D viewer."""
+        self.viewer_3d_dock = QDockWidget("3D Terrain Viewer", self)
+        self.viewer_3d = TerrainViewer3D(self)
+        self.viewer_3d_dock.setWidget(self.viewer_3d)
+        self.viewer_3d_dock.setAllowedAreas(Qt.DockWidgetArea.BottomDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.viewer_3d_dock)
+        self.viewer_3d_dock.setVisible(False)  # Start hidden
+
+    def show_3d_viewer(self):
+        """Shows the 3D viewer dock."""
+        # TODO: This would eventually pass the selected geometry to the viewer
+        self.viewer_3d_dock.setVisible(True)
+        self.statusBar().showMessage("3D viewer opened (placeholder).", 3000)
 
     def _setup_annotation_layer(self):
         """Creates a temporary memory layer to display drawn polygons."""
@@ -169,6 +198,10 @@ class MainWindow(QMainWindow):
 
         file_menu.addSeparator()
 
+        manage_classes_action = QAction("Manage Classes...", self)
+        manage_classes_action.triggered.connect(self.open_class_manager)
+        file_menu.addAction(manage_classes_action)
+
         settings_action = QAction("Settings...", self)
         settings_action.triggered.connect(self.open_settings_dialog)
         file_menu.addAction(settings_action)
@@ -181,6 +214,18 @@ class MainWindow(QMainWindow):
         """Opens the application settings dialog."""
         dialog = SettingsDialog(self)
         dialog.exec()
+
+    def open_class_manager(self):
+        """Opens the dialog to manage terrain classes."""
+        if not self.db_manager.is_connected():
+            self.db_manager.connect() # Attempt to connect
+            if not self.db_manager.is_connected():
+                return # Error message is shown by the manager
+
+        dialog = ClassManagerDialog(self.class_manager, self)
+        dialog.exec()
+        # After closing the dialog, refresh the classes in the sidebar
+        self.sidebar.populate_classes(self.class_manager.get_all_classes())
 
     def load_annotations(self):
         """Loads annotations from the database and displays them on the map."""

@@ -14,27 +14,31 @@ class SidebarWidget(QWidget):
         main_layout.setContentsMargins(10, 10, 10, 10)
 
         # 1. Terrain Classes Group
-        classes_group = QGroupBox("Terrain Classes")
-        classes_layout = QVBoxLayout()
+        self.classes_group = QGroupBox("Terrain Classes")
+        self.classes_layout = QVBoxLayout()
+        self.classes_group.setLayout(self.classes_layout)
+        self.class_radios = {}
+        main_layout.addWidget(self.classes_group)
 
-        # These would eventually be loaded from the database
-        self.class_radios = {
-            "Flat": QRadioButton("Flat"),
-            "Hill": QRadioButton("Hill"),
-            "Low Mountain": QRadioButton("Low Mountain"),
-            "High Mountain": QRadioButton("High Mountain"),
-            "Valley": QRadioButton("Valley"),
-            "Ridge": QRadioButton("Ridge")
-        }
+    def populate_classes(self, classes: list):
+        """Dynamically populates the radio buttons from a list of classes."""
+        # Clear existing radio buttons
+        for i in reversed(range(self.classes_layout.count())):
+            self.classes_layout.itemAt(i).widget().setParent(None)
+        self.class_radios.clear()
 
-        # Set first class as default
-        list(self.class_radios.values())[0].setChecked(True)
+        if not classes:
+            self.classes_layout.addWidget(QLabel("No classes found in DB."))
+            return
 
-        for radio in self.class_radios.values():
-            classes_layout.addWidget(radio)
-
-        classes_group.setLayout(classes_layout)
-        main_layout.addWidget(classes_group)
+        # Add new radio buttons
+        for i, terrain_class in enumerate(classes):
+            radio_button = QRadioButton(f"{terrain_class.class_id}: {terrain_class.class_name}")
+            self.class_radios[terrain_class.class_name] = radio_button
+            self.classes_layout.addWidget(radio_button)
+            # Set first class as default
+            if i == 0:
+                radio_button.setChecked(True)
 
         # 2. Drawing Tools Group
         tools_group = QGroupBox("Drawing Tools")
@@ -75,8 +79,10 @@ class SidebarWidget(QWidget):
         self.save_button = QPushButton("Save to PostGIS")
         self.export_button = QPushButton("Export...")
 
+        self.view_3d_button = QPushButton("View in 3D")
         actions_layout.addWidget(self.save_button)
         actions_layout.addWidget(self.export_button)
+        actions_layout.addWidget(self.view_3d_button)
 
         actions_group.setLayout(actions_layout)
         main_layout.addWidget(actions_group)
