@@ -1,21 +1,21 @@
 import os
 
-# PostGIS Connection Settings
-#
-# The application reads its database configuration from environment variables.
-# For local development, you can set these variables in your shell or use a .env file.
-#
-# Required environment variables:
-# - PG_HOST: The database host.
-# - PG_PORT: The port for the database connection.
-# - PG_DBNAME: The name of the database.
-# - PG_USER: The username for the database connection.
-# - PG_PASSWORD: The password for the database user.
-
+# Database connection settings
 DB_SETTINGS = {
-    "host": os.getenv("PG_HOST", "localhost"),
-    "port": os.getenv("PG_PORT", "5432"),
-    "dbname": os.getenv("PG_DBNAME", "gis_database"),
-    "user": os.getenv("PG_USER", "user"),
-    "password": os.getenv("PG_PASSWORD", "password")
+    'host': os.getenv('PG_HOST', 'localhost'),
+    'port': os.getenv('PG_PORT', '5432'),
+    'dbname': os.getenv('PG_DBNAME', 'osm_data'),
+    'user': os.getenv('PG_USER', 'postgres'),
+    'password': os.getenv('PG_PASSWORD', 'r0b0tic5'),
+}
+
+# Print configuration (without password) for debugging
+def print_config():
+    """Prints the current database configuration (without password)."""
+    print("Database Configuration:")
+    print(f"  Host: {DB_SETTINGS['host']}")
+    print(f"  Port: {DB_SETTINGS['port']}")
+    print(f"  Database: {DB_SETTINGS['dbname']}")
+    print(f"  User: {DB_SETTINGS['user']}")
+    print(f"  Password: {'*' * len(DB_SETTINGS['password']) if DB_SETTINGS['password'] else '(not set)'}")  "password": os.getenv("PG_PASSWORD", "password")
 }
