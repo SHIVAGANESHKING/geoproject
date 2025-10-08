@@ -1,7 +1,7 @@
 from .database_manager import DatabaseManager
 from models.annotation import Annotation
 from qgis.core import QgsGeometry
-from PyQt6.QtWidgets import QMessageBox
+from PyQt5.QtWidgets import QMessageBox
 
 class AnnotationManager:
     """Handles CRUD operations for annotations in the database."""
@@ -36,7 +36,7 @@ class AnnotationManager:
         """
 
         try:
-            cursor = self.db.get_cursor()
+            cursor = self.db.connection.cursor()
             cursor.execute(sql, (
                 annotation.geom,
                 annotation.class_name,
@@ -52,11 +52,11 @@ class AnnotationManager:
                 annotation.created_at,
                 annotation.updated_at
             ))
-            self.db.conn.commit()
+            self.db.connection.commit()
             print("Annotation saved successfully.")
             return True
         except Exception as e:
-            self.db.conn.rollback()
+            self.db.connection.rollback()
             QMessageBox.critical(None, "Database Error", f"Could not save annotation to the database.\n\nDetails: {e}")
             return False
 
@@ -84,7 +84,7 @@ class AnnotationManager:
             WHERE id = %s
         """
         try:
-            cursor = self.db.get_cursor()
+            cursor = self.db.connection.cursor()
             cursor.execute(sql, (
                 annotation.geom, annotation.class_name, annotation.area_sqm,
                 annotation.perimeter_m, annotation.elevation_min, annotation.elevation_max,
@@ -118,7 +118,7 @@ class AnnotationManager:
         """
 
         try:
-            cursor = self.db.get_cursor()
+            cursor = self.db.connection.cursor()
             cursor.execute(sql, (annotation_id,))
             row = cursor.fetchone()
             if row:
@@ -148,9 +148,9 @@ class AnnotationManager:
         sql = "DELETE FROM terrain_annotations WHERE id = %s"
 
         try:
-            cursor = self.db.get_cursor()
+            cursor = self.db.connection.cursor()
             cursor.execute(sql, (annotation_id,))
-            self.db.conn.commit()
+            self.db.connection.commit()
 
             # Check if any row was actually deleted
             if cursor.rowcount > 0:
@@ -183,7 +183,7 @@ class AnnotationManager:
 
         annotations = []
         try:
-            cursor = self.db.get_cursor()
+            cursor = self.db.connection.cursor()
             cursor.execute(sql)
             rows = cursor.fetchall()
             for row in rows:
