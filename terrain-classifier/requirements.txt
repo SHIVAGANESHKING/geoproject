@@ -1,0 +1,21 @@
+# Core ML/DL Framework
+tensorflow
+tensorflow-datasets
+
+# Geospatial Libraries
+# Note: These often have system-level dependencies (GDAL library)
+# It is highly recommended to install these in a Conda environment.
+gdal
+rasterio
+shapely
+
+# Database Connector
+psycopg2-binary
+
+# Standard Data Science Libraries
+numpy
+scikit-learn
+matplotlib
+jupyter # For notebooks
+pandas
+tqdm # For progress bars

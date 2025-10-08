@@ -1,3 +1,4 @@
+import pyvista as pv
 from qgis.core import QgsVectorLayer, QgsFeature, QgsProject, QgsGeometry
 from PyQt6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QFileDialog, QDialog, QDockWidget
 from PyQt6.QtGui import QAction, QKeySequence
@@ -85,6 +86,9 @@ class MainWindow(QMainWindow):
         # Connect the 3D viewer button
         self.sidebar.view_3d_button.clicked.connect(self.show_3d_viewer)
 
+        # Refresh the map to show initial layers
+        self._refresh_map_layers()
+
     def _create_3d_viewer_dock(self):
         """Creates the dock widget for the 3D viewer."""
         self.viewer_3d_dock = QDockWidget("3D Terrain Viewer", self)
@@ -95,10 +99,48 @@ class MainWindow(QMainWindow):
         self.viewer_3d_dock.setVisible(False)  # Start hidden
 
     def show_3d_viewer(self):
-        """Shows the 3D viewer dock."""
-        # TODO: This would eventually pass the selected geometry to the viewer
-        self.viewer_3d_dock.setVisible(True)
-        self.statusBar().showMessage("3D viewer opened (placeholder).", 3000)
+        """
+        Clips the DSM to the selected feature and displays it in the 3D viewer.
+        """
+        if self.selected_feature_id is None:
+            self.statusBar().showMessage("Please select an annotation to view in 3D.", 5000)
+            return
+
+        if not self.dsm_processor.current_dsm_layer:
+            self.statusBar().showMessage("Please load a DSM layer first.", 5000)
+            return
+
+        feature = self.loaded_annotations_layer.getFeature(self.selected_feature_id)
+        geometry = feature.geometry()
+
+        # Offload the clipping and mesh creation to a background thread
+        self.statusBar().showMessage("Generating 3D model...", 0)
+        worker = Worker(self._create_3d_mesh, geometry)
+        worker.signals.result.connect(self._update_3d_viewer_plot)
+        worker.signals.finished.connect(lambda: self.statusBar().clearMessage())
+        worker.signals.error.connect(lambda err: self.statusBar().showMessage(f"Error creating 3D model: {err}", 5000))
+        self.threadpool.start(worker)
+
+    def _create_3d_mesh(self, geometry):
+        """Worker function to clip DSM and create a PyVista mesh."""
+        clipped_dsm_path = self.dsm_processor.clip_dsm_by_geometry(geometry)
+        if clipped_dsm_path:
+            mesh = pv.read(clipped_dsm_path)
+            return mesh
+        return None
+
+    def _update_3d_viewer_plot(self, mesh):
+        """Receives the mesh from the worker and updates the 3D plot."""
+        if mesh:
+            self.viewer_3d.update_plot(mesh)
+            self.viewer_3d_dock.setVisible(True)
+        else:
+            self.statusBar().showMessage("Failed to generate 3D model.", 5000)
+
+    def _refresh_map_layers(self):
+        """Refreshes the layers displayed on the map canvas from the project."""
+        layers = list(QgsProject.instance().mapLayers().values())
+        self.map_canvas.setLayers(layers)
 
     def _setup_annotation_layer(self):
         """Creates a temporary memory layer to display drawn polygons."""
@@ -278,7 +320,7 @@ class MainWindow(QMainWindow):
         self.select_tool.featureSelected.connect(self.handle_feature_selected)
         self.edit_tool = EditTool(self.map_canvas, self.loaded_annotations_layer)
 
-        self.map_canvas.refresh()
+        self._refresh_map_layers()
         self.statusBar().showMessage(f"Loaded {len(features)} annotations. Edit and Select tools are now available.", 5000)
 
     def toggle_edit_mode(self):
@@ -374,4 +416,5 @@ class MainWindow(QMainWindow):
             self, "Load DSM", "", "GeoTIFF Files (*.tif *.tiff)"
         )
         if file_path:
-            self.dsm_processor.load_dsm_layer(file_path)
+            if self.dsm_processor.load_dsm_layer(file_path):
+                self._refresh_map_layers()

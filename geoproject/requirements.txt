@@ -16,4 +16,5 @@ numpy
 scipy
 pyqtgraph
 pyvista
+pyvistaqt
 matplotlib
